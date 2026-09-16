@@ -1,0 +1,51 @@
+{
+  "site_name": "remoteok",
+  "base_url": "https://remoteok.com",
+  "container_selector": "tr.job",
+  "container_selector_type": "css",
+  "fetch_strategy": "static",
+  "crawl_delay_seconds": 2.0,
+  "version": 1,
+  "fields": [
+    {
+      "field_name": "title",
+      "selector": "h2[itemprop='title']",
+      "selector_type": "css",
+      "extraction": "clean_text",
+      "required": true
+    },
+    {
+      "field_name": "company",
+      "selector": "h3[itemprop='name']",
+      "selector_type": "css",
+      "extraction": "clean_text",
+      "required": true
+    },
+    {
+      "field_name": "url",
+      "selector": "a.preventLink",
+      "selector_type": "css",
+      "extraction": "attribute",
+      "attribute_name": "href",
+      "required": true
+    },
+    {
+      "field_name": "location",
+      "selector": "div.location",
+      "selector_type": "css",
+      "extraction": "clean_text",
+      "required": false
+    },
+    {
+      "field_name": "salary",
+      "selector": "div.location:contains('$')",
+      "selector_type": "css",
+      "extraction": "clean_text",
+      "required": false
+    }
+  ],
+  "pagination": {
+    "strategy": "none",
+    "max_pages": 1
+  }
+}
