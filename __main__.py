@@ -1,87 +1,75 @@
-"""Entry point for the job scraper application."""
+"""Command-line entry point for the job scraper application."""
 
 import asyncio
-import os
-from pathlib import Path
+import argparse
+import sys
 from dotenv import load_dotenv
 
 from settings import settings
-from observability.logging_config import setup_logging, get_logger
-from persistence.file_config_repository import FileConfigRepository
-from persistence.result_repository import ResultRepository
-from healing.llm_config_generator import LLMConfigGenerator
-from healing.healing_orchestrator import HealingOrchestrator
-from healing.healing_trigger import CompositeHealingTrigger
-from observability.alerting import WebhookAlertService, LogAlertService, CompositeAlertService
-from orchestration.scrape_job_runner import ScrapeJobRunner
-from orchestration.scheduler import ScrapeScheduler
+from bot import start_bot, run_once
 
 load_dotenv()
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Self-Healing Job Scraper & Notifier Bot",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Run a single scrape pass across active sites and exit immediately (no daemon/scheduler)",
+    )
+    parser.add_argument(
+        "--site",
+        type=str,
+        default=None,
+        help="Target a specific site name (e.g. 'remoteok'). Defaults to all active sites.",
+    )
+    parser.add_argument(
+        "--no-initial-scrape",
+        action="store_true",
+        help="When running as a daemon, do not run an immediate scrape pass on startup",
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default=None,
+        help="Override AI provider (gemini, openai, ollama, groq, mock)",
+    )
+    return parser.parse_args()
+
+
 async def main():
-    setup_logging(settings.log_level)
-    logger = get_logger("main")
-    logger.info("Starting Self-Healing Job Scraper engine", env=os.getenv("ENV", "development"))
+    args = parse_args()
 
-    # Repositories
-    config_repo = FileConfigRepository(settings.configs_dir)
-    result_repo = ResultRepository(settings.output_dir)
+    # Optional runtime settings override
+    if args.provider:
+        settings.ai_provider = args.provider
 
-    # Observability & Alerting
-    alert_services = [LogAlertService()]
-    if settings.alert_webhook_url:
-        alert_services.append(WebhookAlertService(settings.alert_webhook_url))
-    alert_service = CompositeAlertService(alert_services)
-
-    # Healing Orchestrator (if GEMINI_API_KEY is configured)
-    healing_orchestrator = None
-    if settings.gemini_api_key and settings.gemini_api_key != "your-gemini-api-key-here":
-        generator = LLMConfigGenerator(api_key=settings.gemini_api_key)
-        healing_orchestrator = HealingOrchestrator(
-            generator=generator,
-            max_attempts=settings.max_healing_attempts,
-        )
-        logger.info("LLM self-healing enabled with Gemini provider")
+    if args.once:
+        print(f"Executing single-pass scrape (site={args.site or 'all'})...")
+        results = await run_once(site_name=args.site, settings=settings)
+        total_jobs = sum(len(r.postings) for r in results)
+        print(f"Single-pass scrape complete: {len(results)} site(s) processed, {total_jobs} total valid jobs found.")
+        for r in results:
+            status = "SUCCESS" if r.success else f"FAILED: {r.error}"
+            print(f"  [{status}] {r.site_name}: {len(r.postings)} postings in {r.execution_time_seconds:.2f}s")
     else:
-        logger.warn("GEMINI_API_KEY not provided; self-healing LLM disabled")
-
-    # Scrape Job Runner
-    runner = ScrapeJobRunner(
-        config_repo=config_repo,
-        result_repo=result_repo,
-        healing_orchestrator=healing_orchestrator,
-        healing_trigger=CompositeHealingTrigger(),
-        alert_service=alert_service,
-    )
-
-    # Scheduler
-    scheduler = ScrapeScheduler(
-        runner=runner,
-        config_repo=config_repo,
-        default_interval_hours=settings.scrape_interval_hours,
-    )
-
-    # Discover and schedule all site configs
-    configs = list(settings.configs_dir.glob("*.json"))
-    for cfg_file in configs:
-        if ".v" not in cfg_file.name:  # Exclude versioned archives
-            site_name = cfg_file.stem
-            scheduler.schedule_site(site_name)
-            # Run immediate initial scrape
-            logger.info("Executing initial scrape", site_name=site_name)
-            await runner.run(site_name)
-
-    scheduler.start()
-
-    # Keep event loop running
-    try:
-        while True:
-            await asyncio.sleep(3600)
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
-        logger.info("Application shutdown cleanly")
+        site_filter = [args.site] if args.site else None
+        print("Starting Job Notifier Bot daemon (Ctrl+C to stop)...")
+        await start_bot(
+            settings=settings,
+            site_names=site_filter,
+            run_initial_scrape=not args.no_initial_scrape,
+            block=True,
+        )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except (KeyboardInterrupt, SystemExit):
+        print("\nShutdown complete.")
+        sys.exit(0)

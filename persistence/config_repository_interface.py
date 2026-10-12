@@ -23,6 +23,11 @@ class ConfigRepository(ABC):
         pass
 
     @abstractmethod
+    async def list_sites(self) -> list[str]:
+        """List all distinct site names with registered active configurations."""
+        pass
+
+    @abstractmethod
     async def rollback(self, site_name: str, target_version: int) -> SiteConfig | None:
         """Roll back active config to a previous version number."""
         pass

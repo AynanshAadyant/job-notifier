@@ -1,6 +1,7 @@
 """Scheduler orchestrating recurring scrapes across multiple configured sites."""
 
 import asyncio
+from typing import Callable, Awaitable
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -19,11 +20,22 @@ class ScrapeScheduler:
         runner: ScrapeJobRunner,
         config_repo: ConfigRepository,
         default_interval_hours: int = 6,
+        job_wrapper: Callable[[str], Awaitable[None]] | None = None,
     ):
         self.runner = runner
         self.config_repo = config_repo
         self.default_interval_hours = default_interval_hours
+        self.job_wrapper = job_wrapper
         self.scheduler = AsyncIOScheduler()
+
+    @property
+    def is_running(self) -> bool:
+        """Whether the APScheduler is currently running."""
+        return self.scheduler.running
+
+    def get_scheduled_job_ids(self) -> list[str]:
+        """Return list of active scheduled job IDs."""
+        return [job.id for job in self.scheduler.get_jobs()]
 
     def schedule_site(self, site_name: str, interval_hours: int | None = None) -> None:
         hours = interval_hours or self.default_interval_hours
@@ -31,7 +43,10 @@ class ScrapeScheduler:
 
         async def _job():
             try:
-                await self.runner.run(site_name)
+                if self.job_wrapper:
+                    await self.job_wrapper(site_name)
+                else:
+                    await self.runner.run(site_name)
             except Exception as e:
                 logger.error("Error running scheduled job", site_name=site_name, error=str(e))
 
@@ -45,9 +60,11 @@ class ScrapeScheduler:
         logger.info("Scheduled scrape job", site_name=site_name, interval_hours=hours)
 
     def start(self) -> None:
-        self.scheduler.start()
-        logger.info("Scheduler started successfully")
+        if not self.scheduler.running:
+            self.scheduler.start()
+            logger.info("Scheduler started successfully")
 
     def shutdown(self) -> None:
-        self.scheduler.shutdown()
-        logger.info("Scheduler stopped")
+        if self.scheduler.running:
+            self.scheduler.shutdown()
+            logger.info("Scheduler stopped")

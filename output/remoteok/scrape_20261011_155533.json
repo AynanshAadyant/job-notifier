@@ -1,0 +1,29 @@
+{
+  "site_name": "remoteok",
+  "success": false,
+  "postings": [],
+  "health_report": {
+    "site_name": "remoteok",
+    "total_containers_found": 0,
+    "field_healths": {},
+    "has_hard_failures": false,
+    "has_soft_failures": false,
+    "details": ""
+  },
+  "anomaly_report": {
+    "site_name": "remoteok",
+    "is_anomalous": true,
+    "anomalies": [
+      "zero_results"
+    ],
+    "reasons": [
+      "Scrape yielded zero valid job postings"
+    ],
+    "total_raw_records": 0,
+    "valid_records_count": 0,
+    "rejected_records_count": 0
+  },
+  "execution_time_seconds": 0.2997267246246338,
+  "pages_scraped": 0,
+  "error": "Network error"
+}

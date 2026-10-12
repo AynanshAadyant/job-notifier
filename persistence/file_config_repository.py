@@ -68,6 +68,16 @@ class FileConfigRepository(ConfigRepository):
 
         return await asyncio.to_thread(_list)
 
+    async def list_sites(self) -> list[str]:
+        def _list_sites() -> list[str]:
+            sites = []
+            for p in self.configs_dir.glob("*.json"):
+                if ".v" not in p.name:
+                    sites.append(p.stem)
+            return sorted(sites)
+
+        return await asyncio.to_thread(_list_sites)
+
     async def rollback(self, site_name: str, target_version: int) -> SiteConfig | None:
         def _rollback():
             vpath = self._version_path(site_name, target_version)

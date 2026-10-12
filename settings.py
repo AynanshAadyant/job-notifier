@@ -23,8 +23,34 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # --- Required --------------------------------------------------------- #
-    gemini_api_key: str = Field(description="Google Gemini API key for config healing")
+    # --- Decoupled AI / LLM Configuration ---------------------------------- #
+    ai_provider: str = Field(
+        default="gemini",
+        description="AI provider name: 'gemini', 'openai', 'openai_compatible', 'ollama', 'groq', or 'mock'",
+    )
+    ai_model: str | None = Field(
+        default=None,
+        description="Specific model identifier (e.g. 'gemini-2.5-flash', 'gpt-4o-mini', 'llama3')",
+    )
+    ai_api_key: str | None = Field(
+        default=None,
+        description="Universal API key for the configured AI provider",
+    )
+    ai_base_url: str | None = Field(
+        default=None,
+        description="Base URL for OpenAI-compatible endpoints (e.g. 'http://localhost:11434/v1' for Ollama)",
+    )
+
+    # Backward compatibility with existing configs
+    gemini_api_key: str | None = Field(
+        default=None,
+        description="Google Gemini API key (fallback if ai_api_key is not set)",
+    )
+
+    @property
+    def effective_api_key(self) -> str | None:
+        """Return the active API key across provider configurations."""
+        return self.ai_api_key or self.gemini_api_key
 
     # --- Scraping behaviour ------------------------------------------------ #
     scrape_interval_hours: int = Field(
@@ -71,5 +97,5 @@ class Settings(BaseSettings):
         return _PROJECT_ROOT / "output"
 
 
-# Module-level singleton — import this wherever settings are needed.
-settings = Settings()  # type: ignore[call-arg]
+# Module-level default settings instance.
+settings = Settings()
